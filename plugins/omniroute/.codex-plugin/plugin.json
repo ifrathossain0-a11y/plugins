@@ -1,0 +1,50 @@
+{
+  "name": "omniroute",
+  "version": "0.1.0",
+  "description": "Unified AI gateway plugin for OmniRoute — route requests across 339+ providers, compress tokens, and manage failover with a single endpoint.",
+  "author": {
+    "name": "Diego Souza",
+    "url": "https://github.com/diegosouzapw"
+  },
+  "homepage": "https://github.com/diegosouzapw/OmniRoute",
+  "repository": "https://github.com/diegosouzapw/OmniRoute",
+  "license": "MIT",
+  "keywords": [
+    "omniroute",
+    "ai-gateway",
+    "llm-routing",
+    "token-compression",
+    "multi-provider",
+    "failover",
+    "openai-compatible",
+    "mcp",
+    "load-balancing",
+    "cost-optimization",
+    "free-tier",
+    "proxy"
+  ],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "OmniRoute",
+    "shortDescription": "Unified AI gateway across 339+ providers",
+    "longDescription": "Use OmniRoute to route AI requests across 339+ providers through a single OpenAI-compatible endpoint. Configure intelligent routing strategies, compress tokens to save 15–95% of costs, manage provider failover, and integrate via MCP, REST, or A2A. Zero-config with keyless free providers pre-configured.",
+    "developerName": "Diego Souza",
+    "category": "Developer Tools",
+    "capabilities": [
+      "Interactive",
+      "Write"
+    ],
+    "websiteURL": "https://github.com/diegosouzapw/OmniRoute",
+    "privacyPolicyURL": "https://github.com/diegosouzapw/OmniRoute",
+    "termsOfServiceURL": "https://github.com/diegosouzapw/OmniRoute",
+    "defaultPrompt": [
+      "Set up OmniRoute as my local AI gateway and configure routing for my project",
+      "Configure OmniRoute token compression to reduce my API costs",
+      "Add a new provider to OmniRoute and set up failover routing"
+    ],
+    "brandColor": "#6366F1",
+    "composerIcon": "./assets/icon.png",
+    "logo": "./assets/logo.png",
+    "screenshots": []
+  }
+}
