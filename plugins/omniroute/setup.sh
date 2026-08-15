@@ -136,21 +136,46 @@ fi
 echo "[5/7] Starting OmniRoute..."
 
 # Open ports in firewall: 20128 for the API/dashboard, 80+443 for HTTPS (step 7)
-if command -v ufw &> /dev/null; then
+if command -v ufw &> /dev/null && ufw status 2>/dev/null | grep -q "Status: active"; then
     ufw allow 20128/tcp > /dev/null 2>&1 || true
     ufw allow 80/tcp > /dev/null 2>&1 || true
     ufw allow 443/tcp > /dev/null 2>&1 || true
     echo "       Opened ports 20128, 80, 443 in firewall (ufw)."
-elif command -v firewall-cmd &> /dev/null; then
+elif command -v firewall-cmd &> /dev/null && systemctl is-active firewalld &> /dev/null; then
     firewall-cmd --permanent --add-port=20128/tcp > /dev/null 2>&1 || true
     firewall-cmd --permanent --add-port=80/tcp > /dev/null 2>&1 || true
     firewall-cmd --permanent --add-port=443/tcp > /dev/null 2>&1 || true
     firewall-cmd --reload > /dev/null 2>&1 || true
     echo "       Opened ports 20128, 80, 443 in firewall (firewalld)."
+elif command -v iptables &> /dev/null; then
+    # Covers Oracle Cloud's default Ubuntu image, which ships with raw
+    # iptables rules (no ufw/firewalld) that block everything but SSH.
+    IPT_CHANGED=false
+    for PORT in 20128 80 443; do
+        if ! iptables -C INPUT -p tcp --dport "$PORT" -j ACCEPT 2>/dev/null; then
+            iptables -I INPUT 1 -p tcp --dport "$PORT" -j ACCEPT 2>/dev/null || true
+            IPT_CHANGED=true
+        fi
+    done
+    if [ "$IPT_CHANGED" = true ]; then
+        # Persist across reboot so the rules survive
+        if command -v netfilter-persistent &> /dev/null; then
+            netfilter-persistent save > /dev/null 2>&1 || true
+        elif [ -d /etc/iptables ]; then
+            iptables-save > /etc/iptables/rules.v4 2>/dev/null || true
+        fi
+        echo "       Opened ports 20128, 80, 443 directly in iptables."
+    else
+        echo "       Ports 20128, 80, 443 already allowed in iptables."
+    fi
 else
-    echo "       No firewall detected. Ports should be open."
-    echo "       If you can't connect, check your VPS provider's firewall settings."
+    echo "       No firewall tool detected. Ports should be open at the OS level."
 fi
+
+echo "       Note: your VPS provider may ALSO have its own separate cloud"
+echo "       firewall (e.g. Oracle Cloud's Security Lists, DigitalOcean's"
+echo "       Networking > Firewalls). Open ports 20128, 80, 443 there too —"
+echo "       this step only handles the server's own OS firewall."
 
 # Check if something is already running on port 20128
 if curl -s -o /dev/null -w "%{http_code}" http://localhost:20128/v1/models 2>/dev/null | grep -q "200"; then
