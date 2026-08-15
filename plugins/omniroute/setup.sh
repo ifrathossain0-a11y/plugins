@@ -18,8 +18,14 @@ if [ "$(id -u)" -ne 0 ]; then
     exit 1
 fi
 
+# Detect server IP early — needed for DNS verification later
+SERVER_IP=$(curl -s --max-time 5 ifconfig.me 2>/dev/null \
+    || curl -s --max-time 5 icanhazip.com 2>/dev/null \
+    || hostname -I 2>/dev/null | awk '{print $1}' \
+    || echo "YOUR-SERVER-IP")
+
 # --- 1. Install Node.js ---
-echo "[1/6] Installing Node.js..."
+echo "[1/7] Installing Node.js..."
 if command -v node &> /dev/null; then
     echo "       Node.js already installed: $(node --version)"
 else
@@ -43,7 +49,7 @@ else
 fi
 
 # --- 2. Install OmniRoute ---
-echo "[2/6] Installing OmniRoute (this takes 1-3 minutes)..."
+echo "[2/7] Installing OmniRoute (this takes 1-3 minutes)..."
 
 # Add swap if less than 1.5GB RAM available (npm needs memory)
 AVAIL_MEM=$(awk '/MemAvailable/ {print int($2/1024)}' /proc/meminfo 2>/dev/null || echo "2048")
@@ -66,7 +72,7 @@ echo "       Installed OmniRoute $(omniroute --version 2>/dev/null | head -1)"
 
 # --- 3. Ask for OpenRouter key ---
 echo ""
-echo "[3/6] Connect OpenRouter (1,000+ free AI models)"
+echo "[3/7] Connect OpenRouter (1,000+ free AI models)"
 echo ""
 echo "       Get a free key at: https://openrouter.ai/keys"
 echo ""
@@ -90,7 +96,7 @@ fi
 
 # --- 4. Set a dashboard password ---
 echo ""
-echo "[4/6] Dashboard password"
+echo "[4/7] Dashboard password"
 
 ADMIN_PASS=""
 if [ -t 0 ]; then
@@ -127,18 +133,22 @@ if [ -f "$OMNIROUTE_PKG_DIR/.env" ]; then
 fi
 
 # --- 5. Open firewall and start OmniRoute ---
-echo "[5/6] Starting OmniRoute..."
+echo "[5/7] Starting OmniRoute..."
 
-# Open port 20128 in firewall
+# Open ports in firewall: 20128 for the API/dashboard, 80+443 for HTTPS (step 7)
 if command -v ufw &> /dev/null; then
     ufw allow 20128/tcp > /dev/null 2>&1 || true
-    echo "       Opened port 20128 in firewall (ufw)."
+    ufw allow 80/tcp > /dev/null 2>&1 || true
+    ufw allow 443/tcp > /dev/null 2>&1 || true
+    echo "       Opened ports 20128, 80, 443 in firewall (ufw)."
 elif command -v firewall-cmd &> /dev/null; then
     firewall-cmd --permanent --add-port=20128/tcp > /dev/null 2>&1 || true
+    firewall-cmd --permanent --add-port=80/tcp > /dev/null 2>&1 || true
+    firewall-cmd --permanent --add-port=443/tcp > /dev/null 2>&1 || true
     firewall-cmd --reload > /dev/null 2>&1 || true
-    echo "       Opened port 20128 in firewall (firewalld)."
+    echo "       Opened ports 20128, 80, 443 in firewall (firewalld)."
 else
-    echo "       No firewall detected. Port 20128 should be open."
+    echo "       No firewall detected. Ports should be open."
     echo "       If you can't connect, check your VPS provider's firewall settings."
 fi
 
@@ -203,7 +213,7 @@ fi
 
 # --- 6. Connect OpenRouter if key was provided ---
 if [ -n "$OPENROUTER_KEY" ]; then
-    echo "[6/6] Connecting OpenRouter..."
+    echo "[6/7] Connecting OpenRouter..."
 
     # Login to get auth cookie
     LOGIN_OK=$(curl -s -c /tmp/omni-cookies.txt -X POST http://localhost:20128/api/auth/login \
@@ -256,15 +266,123 @@ if [ -n "$OPENROUTER_KEY" ]; then
 
     rm -f /tmp/omni-cookies.txt
 else
-    echo "[6/6] Skipped provider setup."
+    echo "[6/7] Skipped provider setup."
+fi
+
+# --- 7. Optional: HTTPS domain (needed for OpenAI custom provider, ChatGPT apps, etc.) ---
+echo ""
+echo "[7/7] HTTPS domain (optional)"
+echo ""
+echo "       Some tools (e.g. OpenAI's custom model provider, ChatGPT apps)"
+echo "       require an https:// endpoint — plain IP:port won't work there."
+echo "       Free domains: duckdns.org, afraid.org, or use your own."
+echo ""
+
+DOMAIN=""
+if [ -t 0 ]; then
+    echo "       Point your domain's A record at this server's IP first: $SERVER_IP"
+    echo ""
+    read -p "       Domain name (e.g. myroute.duckdns.org), or Enter to skip: " DOMAIN
+    echo ""
+else
+    echo "       NOTE: Cannot prompt for a domain (stdin is piped)."
+    echo "       Re-run interactively to set up HTTPS, or run this later:"
+    echo "         bash <(curl -sL THE_URL)"
+    echo ""
+fi
+
+HTTPS_URL=""
+if [ -n "$DOMAIN" ]; then
+    echo "       Checking DNS for $DOMAIN..."
+
+    DOMAIN_IP=$(curl -s --max-time 8 "https://dns.google/resolve?name=${DOMAIN}&type=A" 2>/dev/null \
+        | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['Answer'][0]['data'] if 'Answer' in d else '')" 2>/dev/null || echo "")
+
+    if [ "$DOMAIN_IP" != "$SERVER_IP" ]; then
+        echo "       WARNING: $DOMAIN does not point to this server yet."
+        echo "       DNS currently resolves to: ${DOMAIN_IP:-nothing}"
+        echo "       Expected: $SERVER_IP"
+        echo ""
+        echo "       Update your domain's DNS A record, wait a few minutes for it"
+        echo "       to propagate, then re-run this script to finish HTTPS setup."
+    else
+        echo "       DNS confirmed. Installing Caddy for automatic HTTPS..."
+
+        if [ -f /etc/debian_version ]; then
+            apt-get install -y -qq debian-keyring debian-archive-keyring apt-transport-https gnupg > /dev/null 2>&1
+            curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/gpg.key' \
+                | gpg --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg 2>/dev/null
+            curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt' \
+                | tee /etc/apt/sources.list.d/caddy-stable.list > /dev/null
+            apt-get update -qq > /dev/null 2>&1
+            apt-get install -y -qq caddy > /dev/null 2>&1
+        fi
+
+        if ! command -v caddy &> /dev/null; then
+            echo "       ERROR: Caddy installation failed. HTTPS not configured."
+            echo "       You can still use http://$SERVER_IP:20128/v1 directly."
+        else
+            mkdir -p /etc/caddy
+            cat > /etc/caddy/Caddyfile << CADDYCFG
+${DOMAIN} {
+    reverse_proxy localhost:20128
+}
+CADDYCFG
+
+            if command -v systemctl &> /dev/null && systemctl is-system-running &> /dev/null; then
+                systemctl enable caddy > /dev/null 2>&1
+                systemctl restart caddy
+            else
+                pkill -f "caddy run" 2>/dev/null || true
+                sleep 1
+                nohup caddy run --config /etc/caddy/Caddyfile > /var/log/caddy.log 2>&1 &
+            fi
+
+            echo "       Waiting for certificate (usually 10-30 seconds)..."
+            CERT_READY=false
+            for i in $(seq 1 20); do
+                if curl -s -o /dev/null --max-time 5 "https://${DOMAIN}/v1/models" 2>/dev/null; then
+                    CERT_READY=true
+                    break
+                fi
+                sleep 3
+            done
+
+            if [ "$CERT_READY" = true ]; then
+                HTTPS_URL="https://${DOMAIN}"
+                echo "       HTTPS is live: https://${DOMAIN}/v1"
+            else
+                CADDY_LOG="/var/log/caddy.log"
+                if [ ! -f "$CADDY_LOG" ] && command -v journalctl &> /dev/null; then
+                    journalctl -u caddy -n 50 --no-pager > /tmp/caddy-journal.log 2>/dev/null
+                    CADDY_LOG="/tmp/caddy-journal.log"
+                fi
+
+                if [ -f "$CADDY_LOG" ] && grep -qi "firewall problem\|timeout during connect" "$CADDY_LOG" 2>/dev/null; then
+                    echo "       Certificate request failed: your VPS provider is blocking"
+                    echo "       inbound traffic on port 80 and/or 443."
+                    echo ""
+                    echo "       Fix: open ports 80 and 443 in your VPS provider's web"
+                    echo "       console (their network firewall, separate from ufw —"
+                    echo "       e.g. DigitalOcean 'Networking > Firewalls', Hetzner"
+                    echo "       'Firewalls', Vultr 'Firewall'). Then re-run this script."
+                    echo ""
+                    echo "       Caddy will also keep retrying automatically every"
+                    echo "       60 seconds once the ports are reachable — no need to"
+                    echo "       restart it once you fix the firewall."
+                else
+                    echo "       Caddy is running but the certificate isn't ready yet."
+                    echo "       Caddy retries automatically. Check back in a minute:"
+                    echo "         curl https://${DOMAIN}/v1/models"
+                fi
+            fi
+        fi
+    fi
+else
+    echo "       Skipped — using http://$SERVER_IP:20128 only."
 fi
 
 # --- Done ---
-SERVER_IP=$(curl -s --max-time 5 ifconfig.me 2>/dev/null \
-    || curl -s --max-time 5 icanhazip.com 2>/dev/null \
-    || hostname -I 2>/dev/null | awk '{print $1}' \
-    || echo "YOUR-SERVER-IP")
-
 echo ""
 echo "  ╔══════════════════════════════════════╗"
 echo "  ║           Setup Complete!            ║"
@@ -273,6 +391,9 @@ echo ""
 echo "  Dashboard:  http://$SERVER_IP:20128"
 echo "  Password:   $ADMIN_PASS"
 echo "  API:        http://$SERVER_IP:20128/v1"
+if [ -n "$HTTPS_URL" ]; then
+    echo "  HTTPS API:  $HTTPS_URL/v1"
+fi
 echo ""
 echo "  Quick start:"
 echo "    omniroute chat                    # Start chatting"
@@ -291,5 +412,5 @@ fi
 echo ""
 echo "  IMPORTANT: If you can't reach the dashboard from your phone,"
 echo "  check your VPS provider's firewall. You may need to allow"
-echo "  port 20128 in their web console (not just ufw)."
+echo "  ports 20128, 80, and 443 in their web console (not just ufw)."
 echo ""
