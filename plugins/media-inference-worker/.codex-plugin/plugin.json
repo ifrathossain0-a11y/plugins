@@ -1,0 +1,39 @@
+{
+  "name": "media-inference-worker",
+  "version": "1.0.0",
+  "description": "Generate images and videos from text prompts via the Higgsfield AI platform, supporting models like Qwen Image 3, GPT Image 2, Kling 3.0, and Veo 3.1.",
+  "author": {
+    "name": "framepipe-dev",
+    "url": "https://github.com/framepipe-dev"
+  },
+  "homepage": "https://github.com/framepipe-dev/media-inference-worker",
+  "repository": "https://github.com/framepipe-dev/media-inference-worker",
+  "license": "MIT",
+  "keywords": [
+    "media",
+    "inference",
+    "image-generation",
+    "video-generation",
+    "text-to-image",
+    "text-to-video",
+    "higgsfield",
+    "ai"
+  ],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Media Inference Worker",
+    "shortDescription": "Generate images and videos from text prompts",
+    "longDescription": "Use the Higgsfield AI platform to generate images and videos from text prompts. Supports multiple models including Qwen Image 3, Nano Banana 2, GPT Image 2, Minimax H3, LTX 2.5 Pro, Kling 3.0, and Veo 3.1 Fast. Handles async job submission and polling.",
+    "developerName": "framepipe-dev",
+    "category": "Design",
+    "capabilities": ["Interactive", "Write"],
+    "websiteURL": "https://github.com/framepipe-dev/media-inference-worker",
+    "defaultPrompt": [
+      "Generate an editorial portrait with hard flash and 35mm grain",
+      "Create a video of a silver coupe driving through rain at night",
+      "List available media inference models and their capabilities"
+    ],
+    "screenshots": [],
+    "brandColor": "#6366F1"
+  }
+}
